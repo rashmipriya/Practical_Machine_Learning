@@ -1,0 +1,186 @@
+---
+title: "Practical_Machine_learning"
+author: "Rashmi Priya"
+date: "February 18, 2017"
+output: html_document
+---
+###1.Environment Preparation
+Let us load all the R libraries that will be needed for our analysis.
+
+```{r}
+library(knitr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+library(corrplot)
+
+```
+
+###2. Data Loading and Cleaning
+
+Separating the training and the testing data
+
+``` {r}
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+```
+
+Partitioning training data again into training and testing data sets so that we can perform our analysis.
+
+``` {r}
+inTrain  <- createDataPartition(training$classe, p=0.7, list=FALSE)
+trainingset <- training[inTrain, ]
+testingset  <- training[-inTrain, ]
+dim(trainingset)
+dim(testingset)
+
+```
+
+We can see that the data has huge amount of NA and we would like to remove them.
+
+```{r}
+NZV <- nearZeroVar(trainingset)
+trainingset <- trainingset[, -NZV]
+testingset  <- testingset[, -NZV]
+dim(trainingset)
+dim(testingset)
+
+```
+
+``` {r}
+removeNA <- sapply(trainingset, function(x) mean(is.na(x))) > 0.95
+trainingset <- trainingset[, removeNA==FALSE]
+testingset <- testingset[, removeNA==FALSE]
+dim(trainingset)
+dim(testingset)
+```
+
+Data looks clean. Though we can still do further cleaning by removing variables that has 90% or 95% NA. Lets choose 95% for this model.
+
+``` {r}
+removeNA <- sapply(trainingset, function(x) mean(is.na(x))) > 0.95
+trainingset <- trainingset[, removeNA==FALSE]
+testingset <- testingset[, removeNA==FALSE]
+dim(trainingset)
+dim(testingset)
+```
+
+Let us remove identification only variables (columns 1 to 5)
+
+```{r}
+trainingset <- trainingset[, -(1:5)]
+testingset  <- testingset[, -(1:5)]
+dim(trainingset)
+dim(testingset)
+```
+
+###3. Correlation Analysis
+
+A correlation among variables is analysed before proceeding to the modeling procedures.
+
+```{r}
+
+corMatrix <- cor(trainingset[, -54])
+corrplot(corMatrix, order = "FPC", method = "color", type = "lower", 
+         tl.cex = 0.8, tl.col = rgb(0, 0, 0))
+
+```
+
+###4. Prediction Model Building
+
+We can use random Forests, Decision Tree and Generalized Boosted Model to model our datasets.
+A Confusion Matrix is plotted at the end of each analysis to better visualize the accuracy of the models.
+
+#### a) Method: Random Forest
+
+```{r}
+
+set.seed(12345)
+controlRF <- trainControl(method="cv", number=3, verboseIter=FALSE)
+modFitRandForest <- train(classe ~ ., data=trainingset, method="rf",
+                          trControl=controlRF)
+modFitRandForest$finalModel
+
+```
+
+```{r}
+predictRandForest <- predict(modFitRandForest, newdata=testingset)
+confMatRandForest <- confusionMatrix(predictRandForest, testingset$classe)
+confMatRandForest
+
+```
+
+```{r}
+plot(confMatRandForest$table, col = confMatRandForest$byClass, 
+     main = paste("Random Forest - Accuracy =",
+                  round(confMatRandForest$overall['Accuracy'], 4)))
+
+```
+
+#### b) Method: Decision Trees
+
+```{r}
+
+modFitDecTree <- rpart(classe ~ ., data=trainingset, method="class")
+fancyRpartPlot(modFitDecTree)
+
+```
+
+```{r}
+
+predictDecTree <- predict(modFitDecTree, newdata=testingset, type="class")
+confMatDecTree <- confusionMatrix(predictDecTree, testingset$classe)
+confMatDecTree
+
+```
+
+```{r}
+
+plot(confMatDecTree$table, col = confMatDecTree$byClass, 
+     main = paste("Decision Tree - Accuracy =",
+                  round(confMatDecTree$overall['Accuracy'], 4)))
+
+```
+
+#### c)  Method: Generalized Boosted Model
+
+```{r}
+
+set.seed(12345)
+controlGBM <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+modFitGBM  <- train(classe ~ ., data=trainingset, method = "gbm",
+                    trControl = controlGBM, verbose = FALSE)
+modFitGBM$finalModel
+
+```
+
+```{r}
+
+predictGBM <- predict(modFitGBM, newdata=testingset)
+confMatGBM <- confusionMatrix(predictGBM, testingset$classe)
+confMatGBM
+```
+
+```{r}
+
+plot(confMatGBM$table, col = confMatGBM$byClass, 
+     main = paste("GBM - Accuracy =", round(confMatGBM$overall['Accuracy'], 4)))
+
+```
+
+####5. Applying the Selected Model to the Test Data
+
+The accuracy of the 3 regression modeling methods above are:
+
+Random Forest : 0.9981
+Decision Tree : 0.7339
+GBM : 0.9874
+
+In that case, the Random Forest model will be applied to predict the testing dataset.
+
+```{r}
+predictTEST <- predict(modFitRandForest, newdata=testing)
+predictTEST
+```
